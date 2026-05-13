@@ -1,0 +1,3 @@
+[2026-03-30 23:19:43,937] INFO [Broker id=1] Transitioning 1 partition(s) to local followers. (state.change.logger)
+[2026-03-30 23:19:43,947] INFO [Broker id=1] Follower flight-delay-ml-request-0 starts at leader epoch 1 from offset 1 with partition epoch 1 and high watermark 1. Current leader is -1. Previous leader Some(-1) and previous leader epoch was 1. (state.change.logger)
+[2026-03-30 23:19:43,962] INFO [Broker id=1] Stopped fetchers as part of controlled shutdown for 1 partitions (state.change.logger)

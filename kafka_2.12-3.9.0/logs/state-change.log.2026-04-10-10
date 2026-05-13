@@ -1,0 +1,3 @@
+[2026-04-10 10:27:17,856] INFO [Broker id=1] Transitioning 1 partition(s) to local leaders. (state.change.logger)
+[2026-04-10 10:27:17,863] INFO [Broker id=1] Creating new partition flight-delay-ml-request-0 with topic id L6Tdnv8ZTzig3dsT3K4Hdg. (state.change.logger)
+[2026-04-10 10:27:17,919] INFO [Broker id=1] Leader flight-delay-ml-request-0 with topic id Some(L6Tdnv8ZTzig3dsT3K4Hdg) starts at leader epoch 0 from offset 0 with partition epoch 0, high watermark 0, ISR [1], adding replicas [] and removing replicas [] . Previous leader None and previous leader epoch was -1. (state.change.logger)
