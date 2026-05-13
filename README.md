@@ -346,27 +346,78 @@ Vistit http://localhost:8080/home for the web version of Apache Airflow.
 
 ## Docker Compose (despliegue completo)
 
-Requisitos: **Docker** y **Docker Compose**, carpeta `models/` con el modelo entrenado (como en la sección de entrenamiento del README) y el fichero `data/origin_dest_distances.jsonl`.
+### Requisitos
 
-Desde la raíz del repositorio:
+- **Docker** y **Docker Compose** instalados.
+- En la **raíz del repositorio**: carpeta `models/` con el modelo entrenado (véase más arriba el entrenamiento con PySpark) y el fichero `data/origin_dest_distances.jsonl`.
+
+### Parar el despliegue
+
+Desde la raíz del clon (donde está `docker-compose.yml`):
+
+**Parar contenedores y conservar datos** (Mongo, Kafka, Elasticsearch en volúmenes; al volver a subir el stack siguen ahí):
 
 ```shell
-docker compose up --build -d
+docker compose down
 ```
 
-La primera vez el servicio **spark-streaming** descarga dependencias Maven (puede tardar varios minutos). La interfaz de predicción con Kafka está en:
-
-`http://localhost:5001/flights/delays/predict_kafka`
-
-Servicios expuestos: **5001** (Flask), **9200** (Elasticsearch), **27017** (Mongo), **9092** (Kafka desde el host).
-
-Para detener y borrar contenedores y volúmenes de datos:
+**Parar y borrar también los volúmenes** (se pierden datos de BBDD y de Kafka en Docker; útil si quieres empezar de cero):
 
 ```shell
 docker compose down -v
 ```
 
-Variables útiles (también en `.env.example`): `KAFKA_BOOTSTRAP_SERVERS`, `MONGO_URI`, `FLIGHT_PREDICTOR_BASE_PATH`, etc.
+### Levantar el despliegue
+
+**Primera vez o tras cambiar Dockerfile / `docker-compose.yml`:**
+
+```shell
+docker compose pull
+docker compose up --build -d
+```
+
+**Solo volver a arrancar** (mismo código e imágenes ya construidas):
+
+```shell
+docker compose up -d
+```
+
+### Comprobar que todo está en marcha
+
+```shell
+docker compose ps
+docker compose logs -f web spark-streaming
+```
+
+(Salir de los logs con `Ctrl+C`; los contenedores siguen ejecutándose.)
+
+### Uso de la aplicación
+
+Interfaz de predicción con Kafka:
+
+`http://localhost:5001/flights/delays/predict_kafka`
+
+Puertos expuestos en el host: **5001** (Flask), **9200** (Elasticsearch), **27017** (Mongo), **9092** (Kafka).
+
+### Ver predicciones en MongoDB (`mongosh`)
+
+```shell
+docker compose exec -it mongo mongosh
+```
+
+Dentro de `mongosh`:
+
+```javascript
+use agile_data_science
+db.flight_delay_ml_response.find().sort({ Timestamp: -1 }).limit(10).pretty()
+exit
+```
+
+### Notas
+
+- La **primera construcción** de la imagen `spark-streaming` puede tardar **mucho tiempo** (descarga del tarball de Spark desde Apache y, en el arranque, dependencias Maven con `spark-submit --packages`). Es normal que una capa del build parezca “quieta” varios minutos.
+- Tras `git pull` con cambios en el código de contenedores, usa de nuevo `docker compose up --build -d`.
+- Variables de entorno útiles para despliegue manual (sin compose): `.env.example` (`KAFKA_BOOTSTRAP_SERVERS`, `MONGO_URI`, `FLIGHT_PREDICTOR_BASE_PATH`, etc.).
 
 
 
