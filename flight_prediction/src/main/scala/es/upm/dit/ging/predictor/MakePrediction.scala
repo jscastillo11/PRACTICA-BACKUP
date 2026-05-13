@@ -1,4 +1,6 @@
 package es.upm.dit.ging.predictor
+import scala.sys.env
+
 import com.mongodb.spark._
 import org.apache.spark.ml.classification.RandomForestClassificationModel
 import org.apache.spark.ml.feature.{Bucketizer, StringIndexerModel, VectorAssembler}
@@ -18,8 +20,11 @@ object MakePrediction {
       .getOrCreate()
     import spark.implicits._
 
-    //Load the arrival delay bucketizer
-    val base_path = "/home/joseebello/practica_creativa"
+    //Load the arrival delay bucketizer (FLIGHT_PREDICTOR_BASE_PATH o PROJECT_HOME)
+    val base_path = env.getOrElse(
+      "FLIGHT_PREDICTOR_BASE_PATH",
+      env.getOrElse("PROJECT_HOME", ".")
+    )
     val arrivalBucketizerPath = "%s/models/arrival_bucketizer_2.0.bin".format(base_path)
     print(arrivalBucketizerPath.toString())
     val arrivalBucketizer = Bucketizer.load(arrivalBucketizerPath)
@@ -40,12 +45,17 @@ object MakePrediction {
       base_path)
     val rfc = RandomForestClassificationModel.load(randomForestModelPath)
 
+    val kafkaBootstrap = env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    val predictionTopic = env.getOrElse("KAFKA_PREDICTION_TOPIC", "flight-delay-ml-request")
+    val mongoSparkUri = env.getOrElse("MONGO_SPARK_URI", "mongodb://127.0.0.1:27017")
+    val checkpointDir = env.getOrElse("SPARK_CHECKPOINT_DIR", "/tmp/flight-predictor-checkpoint")
+
     //Process Prediction Requests in Streaming
     val df = spark
       .readStream
       .format("kafka")
-      .option("kafka.bootstrap.servers", "localhost:9092")
-      .option("subscribe", "flight-delay-ml-request")
+      .option("kafka.bootstrap.servers", kafkaBootstrap)
+      .option("subscribe", predictionTopic)
       .load()
     df.printSchema()
 
@@ -140,9 +150,9 @@ object MakePrediction {
     val dataStreamWriter = finalPredictions
       .writeStream
       .format("mongodb")
-      .option("spark.mongodb.connection.uri", "mongodb://127.0.0.1:27017")
+      .option("spark.mongodb.connection.uri", mongoSparkUri)
       .option("spark.mongodb.database", "agile_data_science")
-      .option("checkpointLocation", "/tmp")
+      .option("checkpointLocation", checkpointDir)
       .option("spark.mongodb.collection", "flight_delay_ml_response")
       .outputMode("append")
 
@@ -153,6 +163,7 @@ object MakePrediction {
     val consoleOutput = finalPredictions.writeStream
       .outputMode("append")
       .format("console")
+      .option("checkpointLocation", "%s/console".format(checkpointDir))
       .start()
     consoleOutput.awaitTermination()
   }

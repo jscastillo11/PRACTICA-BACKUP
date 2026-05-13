@@ -344,6 +344,32 @@ Vistit http://localhost:8080/home for the web version of Apache Airflow.
 
 
 
+## Docker Compose (despliegue completo)
+
+Requisitos: **Docker** y **Docker Compose**, carpeta `models/` con el modelo entrenado (como en la sección de entrenamiento del README) y el fichero `data/origin_dest_distances.jsonl`.
+
+Desde la raíz del repositorio:
+
+```shell
+docker compose up --build -d
+```
+
+La primera vez el servicio **spark-streaming** descarga dependencias Maven (puede tardar varios minutos). La interfaz de predicción con Kafka está en:
+
+`http://localhost:5001/flights/delays/predict_kafka`
+
+Servicios expuestos: **5001** (Flask), **9200** (Elasticsearch), **27017** (Mongo), **9092** (Kafka desde el host).
+
+Para detener y borrar contenedores y volúmenes de datos:
+
+```shell
+docker compose down -v
+```
+
+Variables útiles (también en `.env.example`): `KAFKA_BOOTSTRAP_SERVERS`, `MONGO_URI`, `FLIGHT_PREDICTOR_BASE_PATH`, etc.
+
+
+
 ## Evaluation
 
 ### First stage

@@ -1,0 +1,160 @@
+# Despliegue completo: Elasticsearch + Mongo + Kafka (KRaft 3.9) + import datos +
+# Spark Streaming (predicción) + Flask.
+# Requisito: carpeta ./models con los artefactos entrenados (ver README / train_spark_mllib_model.py).
+# Uso: docker compose up --build -d
+# Web: http://localhost:5001/flights/delays/predict_kafka
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.21
+    hostname: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:9200/_cluster/health >/dev/null || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  mongo:
+    image: mongo:7.0.17
+    hostname: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  mongo-import:
+    image: mongo:7.0.17
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./data:/import:ro
+      - ./docker/mongo-import.sh:/mongo-import.sh:ro
+    entrypoint: ["/bin/bash", "/mongo-import.sh"]
+    restart: "no"
+
+  kafka:
+    image: docker.io/bitnami/kafka:3.9
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_KRAFT_CLUSTER_ID: "abcdefghijklmnopqrstuv"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+
+  kafka-init:
+    image: docker.io/bitnami/kafka:3.9
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        /opt/bitnami/kafka/bin/kafka-topics.sh \
+          --create --if-not-exists \
+          --bootstrap-server kafka:29092 \
+          --topic flight-delay-ml-request \
+          --partitions 1 \
+          --replication-factor 1
+        echo "Topic list:"
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list
+    restart: "no"
+
+  spark-streaming:
+    build:
+      context: .
+      dockerfile: docker/spark-streaming/Dockerfile
+    hostname: spark-streaming
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo-import:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_PREDICTION_TOPIC: flight-delay-ml-request
+      MONGO_SPARK_URI: mongodb://mongo:27017
+      FLIGHT_PREDICTOR_BASE_PATH: /opt/practica
+      SPARK_CHECKPOINT_DIR: /tmp/flight-predictor-checkpoint
+    volumes:
+      - ./models:/opt/practica/models:ro
+    restart: on-failure:3
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    hostname: web
+    ports:
+      - "5001:5001"
+    environment:
+      PORT: "5001"
+      FLASK_DEBUG: "0"
+      MONGO_URI: mongodb://mongo:27017/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_PREDICTION_TOPIC: flight-delay-ml-request
+      ELASTIC_URL: http://elasticsearch:9200/agile_data_science
+      PROJECT_HOME: /opt/practica
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo-import:
+        condition: service_completed_successfully
+      spark-streaming:
+        condition: service_started
+    restart: on-failure:3
+
+volumes:
+  mongo_data:
+  kafka_data:
+  es_data:

@@ -12,7 +12,8 @@ import predict_utils
 # Set up Flask, Mongo and Elasticsearch
 app = Flask(__name__)
 
-client = MongoClient()
+_mongo_uri = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/")
+client = MongoClient(_mongo_uri)
 
 from pyelasticsearch import ElasticSearch
 elastic = ElasticSearch(config.ELASTIC_URL)
@@ -25,8 +26,11 @@ import datetime
 
 # Setup Kafka
 from kafka import KafkaProducer
-producer = KafkaProducer(bootstrap_servers=['localhost:9092'],api_version=(0,10))
-PREDICTION_TOPIC = 'flight-delay-ml-request'
+
+_kafka_brokers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+_kafka_servers = [h.strip() for h in _kafka_brokers.split(",") if h.strip()]
+producer = KafkaProducer(bootstrap_servers=_kafka_servers, api_version=(0, 10))
+PREDICTION_TOPIC = os.environ.get("KAFKA_PREDICTION_TOPIC", "flight-delay-ml-request")
 
 import uuid
 
@@ -538,8 +542,10 @@ def shutdown():
   return 'Server shutting down...'
 
 if __name__ == "__main__":
+    _port = int(os.environ.get("PORT", "5001"))
+    _debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(
-    debug=True,
+    debug=_debug,
     host='0.0.0.0',
-    port='5001'
+    port=_port
   )
