@@ -419,6 +419,17 @@ exit
 - Tras `git pull` con cambios en el código de contenedores, usa de nuevo `docker compose up --build -d`.
 - Variables de entorno útiles para despliegue manual (sin compose): `.env.example` (`KAFKA_BOOTSTRAP_SERVERS`, `MONGO_URI`, `FLIGHT_PREDICTOR_BASE_PATH`, etc.).
 
+### Parte 2 (rúbrica): obligatorios y orden sugerido
+
+Con **Docker Compose** ya cumplido, el resto de ítems obligatorios de la Parte 2 conviene encajarlos en este orden (menos refactors cruzados):
+
+1. **Data Lakehouse con Iceberg** — datos de entrenamiento en **HDFS o S3/MinIO** con Iceberg (base para el punto de entrenamiento).
+2. **Entrenamiento** — leer del lakehouse y **guardar modelos en el mismo lakehouse** (depende del punto 1).
+3. **Distancias en Cassandra** — escribir/leer distancias desde Cassandra en lugar de Mongo para ese flujo.
+4. **Predicción por Kafka + WebSockets** — resultado en Kafka, persistencia en Cassandra, la web consume por WebSockets (nuevo topic, etc.).
+
+**Siguiente paso recomendado ahora:** el **punto 1 (Iceberg + almacenamiento tipo MinIO o HDFS)**; alimenta el resto y evita rehacer Docker más adelante si ya parametrizas URLs por variables de entorno.
+
 
 
 ## Evaluation
