@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2024-10-29T15-30-34Z
+    image: minio/mc:RELEASE.2024-10-29T15-34-59Z
     depends_on:
       - minio
     entrypoint: ["/bin/sh", "-c"]
