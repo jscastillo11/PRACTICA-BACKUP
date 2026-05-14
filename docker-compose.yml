@@ -1,10 +1,65 @@
 # Despliegue completo: Elasticsearch + Mongo + Kafka (KRaft 3.9, imagen apache/kafka) + import datos +
 # Spark Streaming (predicción) + Flask.
 # Requisito: carpeta ./models con los artefactos entrenados (ver README / train_spark_mllib_model.py).
+# Lakehouse (Parte II): MinIO (S3) + ingesta Iceberg del dataset de entrenamiento. Requiere ./data/simple_flight_delay_features.jsonl.bz2 o .jsonl.
 # Uso: docker compose up --build -d
 # Web: http://localhost:5001/flights/delays/predict_kafka
 
 services:
+  minio:
+    image: minio/minio:RELEASE.2024-10-29T16-01-48Z
+    hostname: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-29T15-30-34Z
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for i in $$(seq 1 40); do
+          if mc alias set local http://minio:9000 minioadmin minioadmin 2>/dev/null; then
+            break
+          fi
+          echo "Esperando a MinIO ($$i)..."
+          sleep 2
+        done
+        mc alias set local http://minio:9000 minioadmin minioadmin
+        mc mb --ignore-existing local/lakehouse
+        echo "Bucket lakehouse listo."
+    restart: "no"
+
+  lakehouse-ingest:
+    build:
+      context: .
+      dockerfile: docker/lakehouse-ingest/Dockerfile
+    hostname: lakehouse-ingest
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      S3_WAREHOUSE_BUCKET: lakehouse
+      PRACTICA_DATA_DIR: /opt/practica/data
+      ICEBERG_CATALOG_NAME: lakehouse
+      ICEBERG_TRAINING_TABLE: lakehouse.flights.training_features
+    volumes:
+      - ./data:/opt/practica/data:ro
+    restart: "no"
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.21
     hostname: elasticsearch
@@ -163,3 +218,4 @@ volumes:
   mongo_data:
   kafka_data:
   es_data:
+  minio_data:

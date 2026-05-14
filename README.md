@@ -349,13 +349,13 @@ Vistit http://localhost:8080/home for the web version of Apache Airflow.
 ### Requisitos
 
 - **Docker** y **Docker Compose** instalados.
-- En la **raíz del repositorio**: carpeta `models/` con el modelo entrenado (véase más arriba el entrenamiento con PySpark) y el fichero `data/origin_dest_distances.jsonl`.
+- En la **raíz del repositorio**: carpeta `models/` con el modelo entrenado (véase más arriba el entrenamiento con PySpark), el fichero `data/origin_dest_distances.jsonl` y, según la **Parte II** del enunciado, el dataset de entrenamiento para Iceberg: `data/simple_flight_delay_features.jsonl.bz2` (recomendado, mismo fichero que usa `resources/train_spark_mllib_model.py`) o `data/simple_flight_delay_features.jsonl`.
 
 ### Parar el despliegue
 
 Desde la raíz del clon (donde está `docker-compose.yml`):
 
-**Parar contenedores y conservar datos** (Mongo, Kafka, Elasticsearch en volúmenes; al volver a subir el stack siguen ahí):
+**Parar contenedores y conservar datos** (Mongo, Kafka, Elasticsearch, MinIO en volúmenes; al volver a subir el stack siguen ahí):
 
 ```shell
 docker compose down
@@ -382,6 +382,20 @@ docker compose up --build -d
 docker compose up -d
 ```
 
+### Lakehouse (Parte II): Iceberg sobre MinIO
+
+Con el mismo `docker compose up --build -d` se levantan también **MinIO** (almacenamiento tipo **S3**), la creación del bucket `lakehouse` y el contenedor **`lakehouse-ingest`**, que carga el dataset de entrenamiento en una tabla **Apache Iceberg**, cumpliendo el ítem de evaluación: *«Los datos de entrenamiento deben ser almacenados en HDFS o S3/Minio usando Iceberg como Data Lakehouse»*. El ítem siguiente del enunciado (*entrenar leyendo del lakehouse y guardar modelos en el mismo lakehouse*) **aún no** está implementado en el script de entrenamiento.
+
+**Comprobar la ingesta**
+
+```shell
+docker compose logs lakehouse-ingest
+```
+
+En la salida deberían verse el número de filas leídas, la escritura en la tabla `lakehouse.flights.training_features` y unas filas de muestra. Consola MinIO: `http://localhost:9001` (por defecto `minioadmin` / `minioadmin`); API S3 en el host: puerto **9000**.
+
+Variables: `.env.example` (`MINIO_ENDPOINT`, `S3_WAREHOUSE_BUCKET`, `ICEBERG_TRAINING_TABLE`, …). Código de ingesta: `resources/ingest_training_to_iceberg.py`; imagen: `docker/lakehouse-ingest/`.
+
 ### Comprobar que todo está en marcha
 
 ```shell
@@ -397,7 +411,7 @@ Interfaz de predicción con Kafka:
 
 `http://localhost:5001/flights/delays/predict_kafka`
 
-Puertos expuestos en el host: **5001** (Flask), **9200** (Elasticsearch), **27017** (Mongo), **9092** (Kafka).
+Puertos expuestos en el host: **5001** (Flask), **9200** (Elasticsearch), **27017** (Mongo), **9092** (Kafka), **9000** (API S3 MinIO), **9001** (consola MinIO).
 
 ### Ver predicciones en MongoDB (`mongosh`)
 
@@ -423,12 +437,12 @@ exit
 
 Con **Docker Compose** ya cumplido, el resto de ítems obligatorios de la Parte 2 conviene encajarlos en este orden (menos refactors cruzados):
 
-1. **Data Lakehouse con Iceberg** — datos de entrenamiento en **HDFS o S3/MinIO** con Iceberg (base para el punto de entrenamiento).
-2. **Entrenamiento** — leer del lakehouse y **guardar modelos en el mismo lakehouse** (depende del punto 1).
+1. **Data Lakehouse con Iceberg** — datos de entrenamiento en **HDFS o S3/MinIO** con Iceberg. *Estado:* ingesta a Iceberg en MinIO con `docker compose up --build -d` (servicios `minio`, `minio-init`, `lakehouse-ingest`).
+2. **Entrenamiento** — leer del lakehouse y **guardar modelos en el mismo lakehouse**. *Pendiente.*
 3. **Distancias en Cassandra** — escribir/leer distancias desde Cassandra en lugar de Mongo para ese flujo.
 4. **Predicción por Kafka + WebSockets** — resultado en Kafka, persistencia en Cassandra, la web consume por WebSockets (nuevo topic, etc.).
 
-**Siguiente paso recomendado ahora:** el **punto 1 (Iceberg + almacenamiento tipo MinIO o HDFS)**; alimenta el resto y evita rehacer Docker más adelante si ya parametrizas URLs por variables de entorno.
+**Siguiente paso:** enlazar el entrenamiento al catálogo Iceberg (punto 2 del enunciado).
 
 
 
