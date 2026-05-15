@@ -92,9 +92,10 @@ services:
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      timeout: 10s
+      retries: 12
+      # WSL / disco lento: el primer arranque de WiredTiger puede superar 20s; si falla el ping antes, Compose marca unhealthy.
+      start_period: 120s
 
   mongo-import:
     image: mongo:7.0.17
